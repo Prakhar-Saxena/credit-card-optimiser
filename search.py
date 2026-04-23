@@ -182,8 +182,57 @@ def gather_card_context(card_names, domain_map):
     return results
 
 
+def extract_rate_sentences(snippets, purchase):
+    """
+    From a list of snippets, pull out short sentences or phrases that mention
+    a numeric rate (%, X points, Xx) near a purchase-related keyword.
+    Returns a deduplicated list of the most relevant rate mentions.
+    """
+    purchase_words = set(re.sub(r'[^\w\s]', '', purchase).lower().split())
+    rate_pattern = re.compile(
+        r'[^.]*\b(\d+(?:\.\d+)?)\s*(?:%|percent|x\b|points? per dollar|miles? per dollar|cash back)[^.]*',
+        re.IGNORECASE
+    )
+
+    seen = set()
+    hits = []
+    for snippet in snippets:
+        for match in rate_pattern.finditer(snippet):
+            phrase = match.group().strip()
+            phrase_lower = phrase.lower()
+            # Prefer phrases that mention the purchase category
+            relevance = any(w in phrase_lower for w in purchase_words)
+            key = re.sub(r'\s+', ' ', phrase_lower)
+            if key not in seen:
+                seen.add(key)
+                hits.append((relevance, phrase))
+
+    # Sort: purchase-relevant phrases first
+    hits.sort(key=lambda x: not x[0])
+    return [h[1] for h in hits[:5]]
+
+
 def build_card_context_block(card_contexts):
     return "\n\n".join(f"=== {name} ===\n{text}" for name, text in card_contexts)
+
+
+def build_rates_table(rate_contexts, purchase):
+    """
+    Convert raw snippet contexts into a compact rates table.
+    Each row: Card | Rate mentions extracted from snippets
+    """
+    lines = []
+    for name, text in rate_contexts:
+        if text == "[No rate data found]":
+            lines.append(f"{name}: no data found")
+            continue
+        snippets = [s.lstrip("- ") for s in text.splitlines() if s.strip()]
+        rate_mentions = extract_rate_sentences(snippets, purchase)
+        if rate_mentions:
+            lines.append(f"{name}:\n" + "\n".join(f"  • {r}" for r in rate_mentions))
+        else:
+            lines.append(f"{name}: rate for this category not mentioned in search results")
+    return "\n\n".join(lines)
 
 
 def ask_ollama_stream(prompt):
@@ -250,41 +299,75 @@ Answer:"""
     ask_ollama_stream(prompt)
 
 
+def gather_category_rates(card_names, purchase):
+    """
+    For each card, run two targeted searches to surface the specific rewards rate
+    for the given purchase category. Returns list of (card_name, snippets_text).
+    """
+    results = []
+    for name in card_names:
+        # Query 1: card name + purchase + "%" to bias toward pages that quote the rate
+        q1 = f"{name} {purchase} cashback percent rewards"
+        # Query 2: card name + purchase + "how much" to catch FAQ-style pages
+        q2 = f"how much does {name} earn on {purchase}"
+
+        print(f"  [{name}]")
+        _, s1 = ddg_search(q1, max_results=3)
+        _, s2 = ddg_search(q2, max_results=2)
+
+        seen = set()
+        snippets = []
+        for s in s1 + s2:
+            if s and s not in seen:
+                seen.add(s)
+                snippets.append(s)
+
+        if snippets:
+            print(f"    {len(snippets)} snippet(s) found")
+            results.append((name, "\n".join(f"- {s}" for s in snippets)))
+        else:
+            print(f"    No snippets found")
+            results.append((name, "[No rate data found]"))
+
+    return results
+
+
 def run_use(card_names, domain_map, purchase):
     cards_list = ", ".join(card_names)
     print(f"Cards: {cards_list}")
     print(f"Purchase: {purchase}\n")
-    print("Fetching card data...\n")
 
-    card_contexts = gather_card_context(card_names, domain_map)
-    context = build_card_context_block(card_contexts)
+    print("Searching category-specific rates for each card...\n")
+    rate_contexts = gather_category_rates(card_names, purchase)
 
-    print(f"\nGathered data for {len(card_contexts)} cards. Asking model...\n")
+    rates_table = build_rates_table(rate_contexts, purchase)
+    print(f"\nExtracted rates:\n{rates_table}\n")
     print("=" * 60)
 
-    prompt = f"""You are a credit card rewards expert. Use the card data below to answer one question: which card should the user pay with at "{purchase}"?
+    prompt = f"""You are a credit card rewards expert. A user wants to know which card to use at "{purchase}".
 
 The user owns these cards:
 {cards_list}
 
-Card data (fetched from each card's page — treat stated rates as facts):
-{context}
+Below are the VERIFIED rewards rates for each card at "{purchase}", extracted from live search results. These are facts — do not contradict them, do not substitute your own knowledge.
 
-Now respond in this exact format. Replace everything in [brackets]. Do not add any other text or sections.
+{rates_table}
+
+Using only the rates above, respond in this exact format. Only recommend cards from the user's list.
 
 BEST CHOICE: [Card Name]
-Rate: [e.g. 4% cashback on gas]
-Why: [Why this card wins for this purchase — 2 sentences max]
+Rate: [rate from the table above]
+Why: [Why this card wins — 2 sentences max]
 
 ALTERNATIVE 1: [Card Name]
-Rate: [rate]
-Why: [Why pick this instead — 2 sentences max]
+Rate: [rate from the table above]
+Why: [Why this is a solid second choice — 2 sentences max]
 
 ALTERNATIVE 2: [Card Name]
-Rate: [rate]
-Why: [Why pick this instead — 2 sentences max]
+Rate: [rate from the table above]
+Why: [Why this is worth considering — 2 sentences max]
 
-PRO TIP: [One sentence tip to get even more value from this purchase]"""
+PRO TIP: [One sentence tip to squeeze more value from this purchase]"""
 
     ask_ollama_stream(prompt)
 
