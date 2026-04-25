@@ -88,7 +88,3 @@ Phase 3 — Synthesise Python extracts and ranks numeric rates from the fetched
 | `compare.py` | Orchestration for `compare` mode |
 | `ollama.py` | Ollama API calls (streaming, temperature=0) |
 | `web.py` | DuckDuckGo search, HTML fetch, PDF fetch, URL scoring |
-
-## License
-
-MIT
