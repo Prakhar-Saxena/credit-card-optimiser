@@ -1,7 +1,8 @@
 import os
 
 CARDS_FILE = os.path.join(os.path.dirname(__file__), "cards.json")
-MODEL = "qwen2.5:3b"
+MODEL = "gemma3:4b"
+TEMPERATURE = 0  # fully deterministic — same input always produces the same output
 OLLAMA_URL = "http://localhost:11434/api/generate"
 
 HEADERS = {

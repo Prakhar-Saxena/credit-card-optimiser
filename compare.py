@@ -1,30 +1,47 @@
-from gatherer import gather_card_context
+from resolver import resolve_card_sources
+from researcher import research_compare
 from extractor import build_card_context_block
 from ollama import ask_ollama_stream
 from web import ddg_search
 
 
-def run_compare(card_names, domain_map):
-    cards_list = ", ".join(card_names)
-    print(f"Cards: {cards_list}\n")
-    print("Fetching card data...\n")
-
-    card_contexts = gather_card_context(card_names, domain_map)
-
-    print("\nSearching: card combination and synergy strategies...")
-    _, synergy_snippets = ddg_search(" ".join(card_names) + " credit card points pooling transfer strategy")
-
-    context = build_card_context_block(card_contexts)
-    if synergy_snippets:
-        context += "\n\n=== Combination & Ecosystem Strategies ===\n" + "\n".join(f"- {s}" for s in synergy_snippets)
-
-    print(f"\nGathered data for {len(card_contexts)} cards. Asking model...\n")
+def run_compare(card_names):
+    # ── Phase 1: Resolve ──────────────────────────────────────────────────────
     print("=" * 60)
+    print("PHASE 1 — Resolving card sources")
+    print("=" * 60)
+    card_sources = resolve_card_sources(card_names)
+
+    # ── Phase 2: Research ─────────────────────────────────────────────────────
+    print("\n" + "=" * 60)
+    print("PHASE 2 — Researching card benefits")
+    print("=" * 60 + "\n")
+    research = research_compare(card_sources)
+
+    print("Searching: ecosystem and combination strategies...")
+    _, synergy_snippets = ddg_search(
+        " ".join(card_names) + " credit card points pooling transfer strategy"
+    )
+    if synergy_snippets:
+        print(f"  {len(synergy_snippets)} synergy snippet(s) found:")
+        for s in synergy_snippets:
+            print(f"  • {s[:140]}")
+
+    # ── Phase 3: Synthesize ───────────────────────────────────────────────────
+    print("\n" + "=" * 60)
+    print("PHASE 3 — Synthesizing")
+    print("=" * 60 + "\n")
+
+    context = build_card_context_block(research)
+    if synergy_snippets:
+        context += "\n\n=== Ecosystem & Combination Strategies ===\n" + "\n".join(f"- {s}" for s in synergy_snippets)
+
+    cards_list = ", ".join(card_names)
 
     prompt = f"""You are an expert credit card rewards strategist. Analyze the following cards:
 {cards_list}
 
-Using the card data fetched from official sources below AND your own knowledge, provide a thorough analysis:
+Using the card data below AND your own knowledge, provide a thorough analysis:
 
 1. INDIVIDUAL CARD BREAKDOWN — For each card: annual fee, key earning rates by category, top benefits, lounge access, credits, and ideal user profile.
 

@@ -16,7 +16,6 @@ Usage:
 
 import argparse
 from cards import load_cards
-from resolver import resolve_issuer_domains
 from compare import run_compare
 from use import run_use
 
@@ -31,14 +30,10 @@ def main():
     args = parser.parse_args()
     card_names = load_cards()
 
-    print("Resolving card issuer domains...\n")
-    domain_map = resolve_issuer_domains(card_names)
-    print()
-
     if args.mode == "use":
         run_use(card_names, args.purchase)
     else:
-        run_compare(card_names, domain_map)
+        run_compare(card_names)
 
 
 if __name__ == "__main__":
