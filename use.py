@@ -30,6 +30,8 @@ def run_use(card_names, purchase):
         print(f"  {i + 1}. {card['name']}: {rate_str}")
         if card["phrase"]:
             print(f"     └ {card['phrase'][:120]}")
+        if card.get("url"):
+            print(f"     └ Source: {card['url']}")
     print()
 
     cards_list = ", ".join(card_names)
@@ -39,7 +41,8 @@ def run_use(card_names, purchase):
     def card_block(card):
         rate_str = f"{card['rate']}%" if card["rate"] > 0 else "not found in search data"
         sources = "\n".join(f"  • {p}" for p in card["rate_phrases"]) if card["rate_phrases"] else "  • (no data)"
-        return f"{card['name']}\nRate: {rate_str}\nSource snippets:\n{sources}"
+        source_url = f"\nSource document: {card['url']}" if card.get("url") else ""
+        return f"{card['name']}\nRate: {rate_str}\nSource snippets:\n{sources}{source_url}"
 
     ranked_block = (
         f"BEST ({winner['name']}):\n{card_block(winner)}\n\n"
@@ -56,6 +59,7 @@ Write the final answer in this exact format. Use the rates and card names exactl
 
 BEST CHOICE: {winner['name']}
 Rate: {f"{winner['rate']}%" if winner['rate'] > 0 else "rate not found"}
+Source: {winner['url'] if winner.get('url') else "search snippets"}
 Why: [2 sentences explaining why this card wins for this purchase, based on the source snippets]
 
 ALTERNATIVE 1: {alts[0]['name'] if len(alts) > 0 else 'N/A'}
