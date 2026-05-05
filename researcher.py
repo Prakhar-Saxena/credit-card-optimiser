@@ -1,4 +1,65 @@
+import re
+
 from web import ddg_search, fetch_doc_text
+from extractor import extract_rate_sentences, parse_best_rate
+
+
+# Phrases that indicate a rate is conditional — rotating categories, activation
+# required, limited-time promotions, etc.
+_CONDITIONAL_PHRASES = [
+    'rotating', 'each quarter', 'quarterly', 'activate', 'activation',
+    'bonus categor', 'limited time', 'promotional', 'when enrolled',
+    'sign up', 'enroll',
+]
+
+
+def _build_offers(all_sources, purchase, card_name, all_card_names):
+    """
+    Parse structured reward offers from raw text sources.
+
+    Filters out sources that mention another wallet card by name before
+    extracting rates, preventing comparison articles from attributing a
+    different card's rate to this one.
+
+    Each offer has a `conditional` flag set when the evidence contains
+    rotating-category or activation language — these sort below permanent rates.
+
+    Returns (offers, dropped_count) where offers is a list of
+    {rate, relevant, conditional, evidence} dicts.
+    """
+    purchase_words = set(re.sub(r'[^\w\s]', '', purchase).lower().split())
+    other_names = [n.lower() for n in all_card_names if n.lower() != card_name.lower()]
+
+    clean_sources = []
+    dropped = 0
+    for source in all_sources:
+        source_lower = source.lower()
+        if any(other in source_lower for other in other_names):
+            dropped += 1
+        else:
+            clean_sources.append(source)
+
+    phrases = extract_rate_sentences(clean_sources, purchase)
+    offers = []
+    seen = set()
+    for phrase in phrases:
+        numbers = re.findall(r'(?<!\d)(?<!\.)\b(\d+(?:\.\d+)?)\s*%', phrase)
+        for n in numbers:
+            key = phrase.lower().strip()
+            if key not in seen:
+                seen.add(key)
+                phrase_lower = phrase.lower()
+                relevant = any(w in phrase_lower for w in purchase_words)
+                conditional = any(p in phrase_lower for p in _CONDITIONAL_PHRASES)
+                offers.append({
+                    "rate": float(n),
+                    "relevant": relevant,
+                    "conditional": conditional,
+                    "evidence": phrase.strip(),
+                })
+    # Sort: relevant before general, non-conditional before conditional, rate desc
+    offers.sort(key=lambda o: (not o["relevant"], o["conditional"], -o["rate"]))
+    return offers, dropped
 
 
 def research_purchase(card_sources, purchase):
@@ -6,11 +67,14 @@ def research_purchase(card_sources, purchase):
     Phase 2 (use mode) — for each card:
       1. Fetch the official doc URL found in Phase 1 (PDF or terms page).
       2. Also run targeted snippet searches for this purchase category.
-      3. Print everything retrieved so the user can see what's being used.
+      3. Extract structured offers and print a normalized summary.
 
-    Returns a research bundle dict.
+    Returns a research bundle dict where each card has an `offers` list of
+    {rate, relevant, evidence} dicts, making downstream comparison purely
+    structural rather than text-parsing.
     """
     print(f'Researching rates for: "{purchase}"\n')
+    all_card_names = [c["name"] for c in card_sources]
     cards_data = []
 
     for card in card_sources:
@@ -24,9 +88,6 @@ def research_purchase(card_sources, purchase):
             doc_content = fetch_doc_text(url)
             if doc_content:
                 print(f"    OK — {len(doc_content)} chars")
-                # Show a preview of what was fetched
-                preview = doc_content[:300].replace('\n', ' ')
-                print(f"    Preview: {preview}...")
             else:
                 print(f"    Failed or empty")
 
@@ -44,17 +105,27 @@ def research_purchase(card_sources, purchase):
                 seen.add(s)
                 snippets.append(s)
 
-        if snippets:
-            print(f"    Snippets ({len(snippets)}):")
-            for s in snippets:
-                print(f"      • {s[:140]}")
+        all_sources = ([doc_content] if doc_content else []) + snippets
+        offers, dropped = _build_offers(all_sources, purchase, name, all_card_names)
+        data_source = "official_doc" if doc_content else ("search_snippets" if snippets else "none")
+
+        print(f"    Source: {data_source}")
+        if dropped:
+            print(f"    Filtered: {dropped} source(s) mentioned other wallet cards")
+        if offers:
+            print(f"    Offers ({len(offers)}):")
+            for o in offers:
+                tag = "[relevant]" if o["relevant"] else "[general]"
+                print(f"      • {o['rate']}% {tag} — {o['evidence'][:100]}")
         else:
-            print(f"    No snippets found")
+            print(f"    No offers found")
 
         cards_data.append({
             "name": name,
             "domain": card.get("domain"),
             "url": url,
+            "data_source": data_source,
+            "offers": offers,
             "doc_content": doc_content,
             "snippets": snippets,
         })

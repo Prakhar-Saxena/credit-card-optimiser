@@ -53,38 +53,55 @@ def parse_best_rate(rate_phrases, purchase):
     return relevant_best if relevant_best[0] > 0 else fallback_best
 
 
+_BASE_RATE = 1.0  # conservative fallback when no category-specific rate is found
+
+
 def rank_cards(research_bundle):
     """
-    Parse numeric rates from each card's snippets in the research bundle and
-    return a list sorted best-to-worst for the purchase.
+    Rank cards best-to-worst using pre-structured offers from the research bundle.
+    Only relevant offers (matching the purchase category) drive the rate; general
+    offers are never used for ranking. Cards with no relevant offer fall back to
+    _BASE_RATE and are flagged with is_fallback=True.
 
     Each entry:
-      {"name", "rate", "phrase", "rate_phrases", "url", "domain"}
+      {"name", "rate", "is_fallback", "phrase", "rate_phrases", "url", "domain"}
     """
-    purchase = research_bundle["purchase"]
     ranked = []
 
     for card in research_bundle["cards"]:
-        snippets = card.get("snippets") or []
-        # Official doc content is the most authoritative — prepend it
-        if card.get("doc_content"):
-            snippets = [card["doc_content"]] + snippets
-        elif card.get("content"):
-            snippets = [card["content"]] + snippets
+        offers = card.get("offers") or []
+        relevant = [o for o in offers if o["relevant"]]
 
-        phrases = extract_rate_sentences(snippets, purchase)
-        rate_val, best_phrase = parse_best_rate(phrases, purchase)
+        if relevant:
+            best = relevant[0]  # sorted: non-conditional first, then by rate desc
+            rate_val = best["rate"]
+            best_phrase = best["evidence"]
+            is_fallback = False
+            # If any relevant offer at this rate has conditional language, the
+            # rate is conditional — a single clean-looking phrase doesn't mean
+            # the program itself is unconditional
+            is_conditional = any(
+                o["conditional"] and o["rate"] >= rate_val for o in relevant
+            )
+        else:
+            rate_val = _BASE_RATE
+            best_phrase = ""
+            is_fallback = True
+            is_conditional = False
 
         ranked.append({
             "name": card["name"],
             "rate": rate_val,
+            "is_fallback": is_fallback,
+            "is_conditional": is_conditional,
             "phrase": best_phrase,
-            "rate_phrases": phrases,
+            "rate_phrases": [o["evidence"] for o in offers],
             "url": card.get("url"),
             "domain": card.get("domain"),
         })
 
-    ranked.sort(key=lambda c: c["rate"], reverse=True)
+    # Verified non-conditional > verified conditional > fallback
+    ranked.sort(key=lambda c: (c["is_fallback"], c["is_conditional"], -c["rate"]))
     return ranked
 
 

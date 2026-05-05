@@ -26,7 +26,12 @@ def run_use(card_names, purchase):
 
     print("Ranked by rate (Python-parsed):")
     for i, card in enumerate(ranked):
-        rate_str = f"{card['rate']}%" if card["rate"] > 0 else "not found"
+        if card["is_fallback"]:
+            rate_str = f"~{card['rate']}% (est. base)"
+        elif card["is_conditional"]:
+            rate_str = f"{card['rate']}% (conditional)"
+        else:
+            rate_str = f"{card['rate']}%"
         print(f"  {i + 1}. {card['name']}: {rate_str}")
         if card["phrase"]:
             print(f"     └ {card['phrase'][:120]}")
@@ -39,7 +44,7 @@ def run_use(card_names, purchase):
     alts = ranked[1:3]
 
     def card_block(card):
-        rate_str = f"{card['rate']}%" if card["rate"] > 0 else "not found in search data"
+        rate_str = f"~{card['rate']}% (estimated base rate — no category-specific data found)" if card["is_fallback"] else f"{card['rate']}%"
         sources = "\n".join(f"  • {p}" for p in card["rate_phrases"]) if card["rate_phrases"] else "  • (no data)"
         source_url = f"\nSource document: {card['url']}" if card.get("url") else ""
         return f"{card['name']}\nRate: {rate_str}\nSource snippets:\n{sources}{source_url}"
@@ -49,25 +54,34 @@ def run_use(card_names, purchase):
         + "\n\n".join(f"ALTERNATIVE {i + 1} ({a['name']}):\n{card_block(a)}" for i, a in enumerate(alts))
     )
 
+    def rate_label(card):
+        if card["is_fallback"]:
+            return f"~{card['rate']}% (estimated base rate)"
+        if card["is_conditional"]:
+            return f"{card['rate']}% (conditional — requires activation or rotating category)"
+        return f"{card['rate']}%"
+
     prompt = f"""You are a credit card rewards expert. A user wants to know which card to use at "{purchase}".
 
 The cards have already been ranked by their rewards rate using Python — do not re-rank or second-guess the order.
+Rates marked as "estimated base rate" mean no category-specific data was found; treat them as approximate.
+Rates marked as "conditional" require activation or apply only during rotating quarterly categories — mention this caveat.
 
 {ranked_block}
 
 Write the final answer in this exact format. Use the rates and card names exactly as given above.
 
 BEST CHOICE: {winner['name']}
-Rate: {f"{winner['rate']}%" if winner['rate'] > 0 else "rate not found"}
+Rate: {rate_label(winner)}
 Source: {winner['url'] if winner.get('url') else "search snippets"}
 Why: [2 sentences explaining why this card wins for this purchase, based on the source snippets]
 
 ALTERNATIVE 1: {alts[0]['name'] if len(alts) > 0 else 'N/A'}
-Rate: {f"{alts[0]['rate']}%" if len(alts) > 0 and alts[0]['rate'] > 0 else "rate not found"}
+Rate: {rate_label(alts[0]) if len(alts) > 0 else "N/A"}
 Why: [2 sentences on when to pick this over the winner]
 
 ALTERNATIVE 2: {alts[1]['name'] if len(alts) > 1 else 'N/A'}
-Rate: {f"{alts[1]['rate']}%" if len(alts) > 1 and alts[1]['rate'] > 0 else "rate not found"}
+Rate: {rate_label(alts[1]) if len(alts) > 1 else "N/A"}
 Why: [2 sentences on when to pick this over the winner]
 
 PRO TIP: [One sentence tip to squeeze more value from this purchase]"""

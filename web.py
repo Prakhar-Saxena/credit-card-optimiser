@@ -18,8 +18,16 @@ _NON_US_TLDS = [
     '.co.nz', '.com.hk', '.ie', '.co.za', '.com.br', '.com.ar',
 ]
 
+# Path/locale segments that indicate non-US content on otherwise .com domains
+# e.g. amex.com/en-idc/ (India), amex.com/content/dam/amex/au/
+_NON_US_PATH_SEGMENTS = [
+    '/au/', '/en-au', '/en-gb', '/en-ca', '/en-in', '/en-idc',
+    '/en-sg', '/en-hk', '/en-mx', '/en-ie', '/en-za', '/en-br',
+    '/uk/', '/idc/', '/dam/amex/au', '/dam/amex/uk', '/dam/amex/ca',
+]
+
 # Substrings in the domain/path that indicate a US locale (bonus)
-_US_SIGNALS = ['/us/', '/us-', 'unitedstates', '-us.', '.com/en-us']
+_US_SIGNALS = ['/us/', '/us-', 'unitedstates', '-us.', '/en-us', 'en_us']
 
 
 def ddg_search(query, max_results=5):
@@ -58,7 +66,9 @@ def score_doc_url(url):
     if any(sig in u for sig in _US_SIGNALS):
         score += 2
     if any(tld in u for tld in _NON_US_TLDS):
-        score -= 5  # strong penalty — we almost never want non-US docs
+        score -= 5
+    if any(seg in u for seg in _NON_US_PATH_SEGMENTS):
+        score -= 5
     return score
 
 

@@ -1,6 +1,48 @@
 import json
+import subprocess
+import time
+import urllib.error
 import urllib.request
-from config import MODEL, OLLAMA_URL, TEMPERATURE
+from config import MODEL, OLLAMA_URL, SEED, TEMPERATURE
+
+_HEALTH_URL = "http://localhost:11434/api/tags"
+_ollama_proc = None  # subprocess started by this script, if any
+
+
+def _is_ollama_running():
+    try:
+        urllib.request.urlopen(_HEALTH_URL, timeout=2)
+        return True
+    except Exception:
+        return False
+
+
+def ensure_ollama():
+    """Start Ollama if it isn't already running. Returns True if we started it."""
+    global _ollama_proc
+    if _is_ollama_running():
+        return False
+    print("Ollama not running — starting it...")
+    _ollama_proc = subprocess.Popen(
+        ["ollama", "serve"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    for _ in range(20):
+        time.sleep(0.5)
+        if _is_ollama_running():
+            print("Ollama ready.\n")
+            return True
+    raise RuntimeError("Ollama failed to start after 10 seconds.")
+
+
+def shutdown_ollama():
+    """Terminate the Ollama process if this script started it."""
+    global _ollama_proc
+    if _ollama_proc is not None:
+        _ollama_proc.terminate()
+        _ollama_proc.wait()
+        _ollama_proc = None
 
 
 def _payload(prompt):
@@ -8,7 +50,7 @@ def _payload(prompt):
         "model": MODEL,
         "prompt": prompt,
         "stream": True,
-        "options": {"temperature": TEMPERATURE},
+        "options": {"temperature": TEMPERATURE, "seed": SEED},
     }).encode()
 
 

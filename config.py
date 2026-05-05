@@ -2,7 +2,8 @@ import os
 
 CARDS_FILE = os.path.join(os.path.dirname(__file__), "cards.json")
 MODEL = "gemma3:4b"
-TEMPERATURE = 0  # fully deterministic — same input always produces the same output
+TEMPERATURE = 0
+SEED = 42
 OLLAMA_URL = "http://localhost:11434/api/generate"
 
 HEADERS = {

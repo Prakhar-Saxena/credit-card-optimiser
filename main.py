@@ -17,6 +17,7 @@ Usage:
 import argparse
 from cards import load_cards
 from compare import run_compare
+from ollama import ensure_ollama, shutdown_ollama
 from use import run_use
 
 
@@ -30,10 +31,14 @@ def main():
     args = parser.parse_args()
     card_names = load_cards()
 
-    if args.mode == "use":
-        run_use(card_names, args.purchase)
-    else:
-        run_compare(card_names)
+    ensure_ollama()
+    try:
+        if args.mode == "use":
+            run_use(card_names, args.purchase)
+        else:
+            run_compare(card_names)
+    finally:
+        shutdown_ollama()
 
 
 if __name__ == "__main__":
