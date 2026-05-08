@@ -2,6 +2,7 @@ from resolver import resolve_card_sources
 from researcher import research_purchase
 from extractor import rank_cards
 from ollama import ask_ollama_stream
+from categorizer import identify_purchase_category
 from timer import Timer
 
 
@@ -18,7 +19,15 @@ def run_use(card_names, purchase):
     print("\n" + "=" * 60)
     print(f"PHASE 2 — Researching rewards rates  {t.ts()}")
     print("=" * 60 + "\n")
-    research = research_purchase(card_sources, purchase, t)
+
+    identified = identify_purchase_category(purchase)
+    category = identified["category"]
+    merchant = identified.get("merchant")
+    if category.lower() != purchase.lower():
+        merchant_str = f" ({merchant})" if merchant else ""
+        print(f'  Identified: "{purchase}"{merchant_str} → {category}\n')
+
+    research = research_purchase(card_sources, purchase, t, category)
 
     # ── Phase 3: Synthesize ───────────────────────────────────────────────────
     print("=" * 60)

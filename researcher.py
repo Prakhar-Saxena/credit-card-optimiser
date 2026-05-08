@@ -22,7 +22,7 @@ _REWARD_SIGNALS = re.compile(
 )
 
 
-def _build_offers(all_sources, purchase, card_name, all_card_names):
+def _build_offers(all_sources, purchase, card_name, all_card_names, category=None):
     """
     Parse structured reward offers from raw text sources.
 
@@ -36,7 +36,8 @@ def _build_offers(all_sources, purchase, card_name, all_card_names):
     Returns (offers, dropped_count) where offers is a list of
     {rate, relevant, conditional, evidence} dicts.
     """
-    purchase_words = set(re.sub(r'[^\w\s]', '', purchase).lower().split())
+    match_target = category or purchase
+    purchase_words = set(re.sub(r'[^\w\s]', '', match_target).lower().split())
     other_names = [n.lower() for n in all_card_names if n.lower() != card_name.lower()]
 
     clean_sources = []
@@ -48,7 +49,7 @@ def _build_offers(all_sources, purchase, card_name, all_card_names):
         else:
             clean_sources.append(source)
 
-    phrases = extract_rate_sentences(clean_sources, purchase)
+    phrases = extract_rate_sentences(clean_sources, match_target)
     offers = []
     seen = set()
     for phrase in phrases:
@@ -73,17 +74,21 @@ def _build_offers(all_sources, purchase, card_name, all_card_names):
     return offers, dropped
 
 
-def research_purchase(card_sources, purchase, timer=None):
+def research_purchase(card_sources, purchase, timer=None, category=None):
     """
     Phase 2 (use mode) — for each card:
       1. Fetch the official doc URL found in Phase 1 (PDF or terms page).
       2. Also run targeted snippet searches for this purchase category.
       3. Extract structured offers and print a normalized summary.
 
+    `category` is the normalised rewards category (e.g. "gas stations") used for
+    DDG queries and relevance matching. Falls back to `purchase` when not provided.
+
     Returns a research bundle dict where each card has an `offers` list of
     {rate, relevant, evidence} dicts, making downstream comparison purely
     structural rather than text-parsing.
     """
+    search_term = category or purchase
     print(f'Researching rates for: "{purchase}"\n')
     all_card_names = [c["name"] for c in card_sources]
     cards_data = []
@@ -106,8 +111,8 @@ def research_purchase(card_sources, purchase, timer=None):
 
         # Always also run targeted snippet searches — they often surface
         # the specific rate sentence more directly than a full doc
-        q1 = f"{name} {purchase} cashback percent rewards"
-        q2 = f"how much does {name} earn on {purchase}"
+        q1 = f"{name} {search_term} cashback percent rewards"
+        q2 = f"how much does {name} earn on {search_term}"
         _, s1 = ddg_search(q1, max_results=3)
         _, s2 = ddg_search(q2, max_results=2)
 
@@ -119,7 +124,7 @@ def research_purchase(card_sources, purchase, timer=None):
                 snippets.append(s)
 
         all_sources = ([doc_content] if doc_content else []) + snippets
-        offers, dropped = _build_offers(all_sources, purchase, name, all_card_names)
+        offers, dropped = _build_offers(all_sources, purchase, name, all_card_names, category)
         data_source = "official_doc" if doc_content else ("search_snippets" if snippets else "none")
 
         print(f"    Source: {data_source}")
