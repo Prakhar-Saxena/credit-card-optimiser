@@ -3,20 +3,23 @@ from researcher import research_compare
 from extractor import build_card_context_block
 from ollama import ask_ollama_stream
 from web import ddg_search
+from timer import Timer
 
 
 def run_compare(card_names):
+    t = Timer()
+
     # ── Phase 1: Resolve ──────────────────────────────────────────────────────
     print("=" * 60)
-    print("PHASE 1 — Resolving card sources")
+    print(f"PHASE 1 — Resolving card sources  {t.ts()}")
     print("=" * 60)
     card_sources = resolve_card_sources(card_names)
 
     # ── Phase 2: Research ─────────────────────────────────────────────────────
     print("\n" + "=" * 60)
-    print("PHASE 2 — Researching card benefits")
+    print(f"PHASE 2 — Researching card benefits  {t.ts()}")
     print("=" * 60 + "\n")
-    research = research_compare(card_sources)
+    research = research_compare(card_sources, t)
 
     print("Searching: ecosystem and combination strategies...")
     _, synergy_snippets = ddg_search(
@@ -29,7 +32,7 @@ def run_compare(card_names):
 
     # ── Phase 3: Synthesize ───────────────────────────────────────────────────
     print("\n" + "=" * 60)
-    print("PHASE 3 — Synthesizing")
+    print(f"PHASE 3 — Synthesizing  {t.ts()}")
     print("=" * 60 + "\n")
 
     context = build_card_context_block(research)

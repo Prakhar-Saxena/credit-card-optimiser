@@ -2,24 +2,27 @@ from resolver import resolve_card_sources
 from researcher import research_purchase
 from extractor import rank_cards
 from ollama import ask_ollama_stream
+from timer import Timer
 
 
 def run_use(card_names, purchase):
+    t = Timer()
+
     # ── Phase 1: Resolve ──────────────────────────────────────────────────────
     print("=" * 60)
-    print("PHASE 1 — Resolving card sources")
+    print(f"PHASE 1 — Resolving card sources  {t.ts()}")
     print("=" * 60)
     card_sources = resolve_card_sources(card_names)
 
     # ── Phase 2: Research ─────────────────────────────────────────────────────
     print("\n" + "=" * 60)
-    print("PHASE 2 — Researching rewards rates")
+    print(f"PHASE 2 — Researching rewards rates  {t.ts()}")
     print("=" * 60 + "\n")
-    research = research_purchase(card_sources, purchase)
+    research = research_purchase(card_sources, purchase, t)
 
     # ── Phase 3: Synthesize ───────────────────────────────────────────────────
     print("=" * 60)
-    print("PHASE 3 — Synthesizing")
+    print(f"PHASE 3 — Synthesizing  {t.ts()}")
     print("=" * 60 + "\n")
 
     ranked = rank_cards(research)

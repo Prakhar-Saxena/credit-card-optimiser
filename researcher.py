@@ -1,4 +1,5 @@
 import re
+import time
 
 from web import ddg_search, fetch_doc_text
 from extractor import extract_rate_sentences, parse_best_rate
@@ -11,6 +12,14 @@ _CONDITIONAL_PHRASES = [
     'bonus categor', 'limited time', 'promotional', 'when enrolled',
     'sign up', 'enroll',
 ]
+
+# At least one of these must appear in a rate phrase for it to be treated as a
+# card reward — prevents store sale discounts ("60% off"), APRs, and gift card
+# portal discounts from being mistaken for cashback rates.
+_REWARD_SIGNALS = re.compile(
+    r'cash\s*back|cashback|\bearn\b|\bback\b|points?\b|miles?\b|rewards?\b',
+    re.IGNORECASE,
+)
 
 
 def _build_offers(all_sources, purchase, card_name, all_card_names):
@@ -43,6 +52,8 @@ def _build_offers(all_sources, purchase, card_name, all_card_names):
     offers = []
     seen = set()
     for phrase in phrases:
+        if not _REWARD_SIGNALS.search(phrase):
+            continue  # store discounts, APRs, gift-card deals — not card rewards
         numbers = re.findall(r'(?<!\d)(?<!\.)\b(\d+(?:\.\d+)?)\s*%', phrase)
         for n in numbers:
             key = phrase.lower().strip()
@@ -62,7 +73,7 @@ def _build_offers(all_sources, purchase, card_name, all_card_names):
     return offers, dropped
 
 
-def research_purchase(card_sources, purchase):
+def research_purchase(card_sources, purchase, timer=None):
     """
     Phase 2 (use mode) — for each card:
       1. Fetch the official doc URL found in Phase 1 (PDF or terms page).
@@ -80,7 +91,9 @@ def research_purchase(card_sources, purchase):
     for card in card_sources:
         name = card["name"]
         url = card.get("url")
-        print(f"  [{name}]")
+        card_start = time.monotonic()
+        ts_str = f"  {timer.ts()}" if timer else ""
+        print(f"  [{name}]{ts_str}")
 
         doc_content = None
         if url:
@@ -120,6 +133,7 @@ def research_purchase(card_sources, purchase):
         else:
             print(f"    No offers found")
 
+        card_elapsed = time.monotonic() - card_start
         cards_data.append({
             "name": name,
             "domain": card.get("domain"),
@@ -129,12 +143,13 @@ def research_purchase(card_sources, purchase):
             "doc_content": doc_content,
             "snippets": snippets,
         })
+        print(f"    Done in {card_elapsed:.1f}s")
         print()
 
     return {"purchase": purchase, "cards": cards_data}
 
 
-def research_compare(card_sources):
+def research_compare(card_sources, timer=None):
     """
     Phase 2 (compare mode) — for each card, fetch its official doc URL and fall
     back to search snippets if the fetch fails.
@@ -148,7 +163,9 @@ def research_compare(card_sources):
     for card in card_sources:
         name = card["name"]
         url = card.get("url")
-        print(f"  [{name}]")
+        card_start = time.monotonic()
+        ts_str = f"  {timer.ts()}" if timer else ""
+        print(f"  [{name}]{ts_str}")
 
         doc_content = None
         if url:
@@ -173,6 +190,7 @@ def research_compare(card_sources):
             else:
                 print(f"    No snippets found")
 
+        card_elapsed = time.monotonic() - card_start
         cards_data.append({
             "name": name,
             "domain": card.get("domain"),
@@ -180,6 +198,7 @@ def research_compare(card_sources):
             "doc_content": doc_content,
             "snippets": snippets,
         })
+        print(f"    Done in {card_elapsed:.1f}s")
         print()
 
     return {"purchase": None, "cards": cards_data}
